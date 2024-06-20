@@ -1,0 +1,462 @@
+./
+│   ├── requirements.txt
+│   ├── pytest.ini
+│   ├── main.py
+│   ├── exporter/
+│   │   ├── __init__.py
+│   │   ├── file_handler.py
+│   │   ├── ignore_parser.py
+│   │   ├── main.py
+│   ├── tests/
+│   │   ├── test_file_handler.py
+│   │   ├── test_common.py
+│   │   ├── test_ignore_parser.py
+│   │   ├── conftest.py
+│   │   ├── __init__.py
+│   │   ├── test_project_exporter.py
+│   │   ├── test_main.py
+
+./requirements.txt:
+```txt
+pytest
+gitpython
+
+```
+
+./pytest.ini:
+```ini
+[pytest]
+
+```
+
+./main.py:
+```py
+import os
+import sys
+from exporter.main import ProjectExporter
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Error: No project path provided. Usage: main.py <project_path>")
+        sys.exit(1)
+
+    project_path = sys.argv[1]
+
+    # Eliminar el archivo si ya existe
+    output_file_path = os.path.join(project_path, 'project_structure.txt')
+    if os.path.exists(output_file_path):
+        os.remove(output_file_path)
+
+    exporter = ProjectExporter()
+    project_structure, project_contents = exporter.export(project_path)
+
+    with open(output_file_path, 'w') as file:
+        file.write(project_structure)
+        file.write('\n\n')
+        file.write(project_contents)
+
+    print("Project export completed.")
+
+```
+
+./exporter/__init__.py:
+```py
+
+```
+
+./exporter/file_handler.py:
+```py
+import os
+import fnmatch
+from typing import Tuple
+
+class FileHandler:
+    def generate_project_structure(self, project_path: str, ignore_list: list) -> Tuple[str, str]:
+        structure = []
+        contents = []
+
+        for root, dirs, files in os.walk(project_path):
+            dirs[:] = [d for d in dirs if not self._should_ignore(os.path.join(root, d), ignore_list)]
+            files = [f for f in files if not self._should_ignore(os.path.join(root, f), ignore_list)]
+
+            level = root.replace(project_path, '').count(os.sep)
+            indent = '│   ' * level
+            structure.append(f'{indent}├── {os.path.basename(root)}/' if level > 0 else f'./')
+
+            sub_indent = '│   ' * (level + 1)
+            for file in files:
+                file_path = os.path.join(root, file)
+                structure.append(f'{sub_indent}├── {file}')
+                content = self.read_file(file_path)
+                extension = os.path.splitext(file)[1][1:]
+                contents.append(f'{file_path}:\n```{extension}\n{content}\n```\n')
+
+        return '\n'.join(structure), '\n'.join(contents)
+
+    def read_file(self, file_path: str) -> str:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except UnicodeDecodeError:
+            try:
+                with open(file_path, 'r', encoding='latin-1') as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                return "Unable to decode file content"
+
+    def _should_ignore(self, path: str, ignore_list: list) -> bool:
+        for pattern in ignore_list:
+            if pattern.endswith('/'):
+                pattern = pattern.rstrip('/')
+                if fnmatch.fnmatch(os.path.basename(path.rstrip('/')), pattern):
+                    return True
+                continue
+            if fnmatch.fnmatch(path, pattern):
+                return True
+            if fnmatch.fnmatch(os.path.basename(path), pattern):
+                return True
+        return False
+
+```
+
+./exporter/ignore_parser.py:
+```py
+import os
+
+class IgnoreParser:
+    def parse_gitignore(self, project_path: str) -> list:
+        ignore_list = []
+        ignore_file = os.path.join(project_path, '.gitignore')
+        default_ignore_file = os.path.join(os.path.dirname(__file__), '..', '.default_gitignore')
+
+        if not os.path.exists(ignore_file):
+            ignore_file = default_ignore_file
+
+        with open(ignore_file, 'r') as file:
+            ignore_list = [line.strip() for line in file if line.strip() and not line.startswith('#')]
+
+        if ignore_file != default_ignore_file:
+            with open(default_ignore_file, 'r') as file:
+                ignore_list.extend([line.strip() for line in file if line.strip() and not line.startswith('#')])
+
+        return ignore_list
+
+```
+
+./exporter/main.py:
+```py
+from exporter.file_handler import FileHandler
+from exporter.ignore_parser import IgnoreParser
+
+class ProjectExporter:
+    def __init__(self):
+        self.file_handler = FileHandler()
+        self.ignore_parser = IgnoreParser()
+
+    def export(self, project_path: str):
+        ignore_list = self.ignore_parser.parse_gitignore(project_path)
+        project_structure, project_contents = self.file_handler.generate_project_structure(project_path, ignore_list)
+        return project_structure, project_contents
+
+
+```
+
+./tests/test_file_handler.py:
+```py
+# ./tests/test_file_handler.py
+import pytest
+from exporter.file_handler import FileHandler
+from tests.test_common import create_test_project, common_test_empty_directory, common_test_nested_directories, common_test_mixed_content
+
+@pytest.fixture
+def file_handler():
+    return FileHandler()
+
+def test_generate_structure_no_ignored_files(file_handler, create_test_project):
+    project_path = create_test_project({"test_file.py": "print('Hello World')"})
+
+    structure, contents = file_handler.generate_project_structure(project_path, [])
+    assert './' in structure
+    assert '├── test_file.py' in structure
+    assert f"{project_path}/test_file.py:\n```py\nprint('Hello World')\n```\n" in contents
+
+def test_generate_structure_with_ignored_files(file_handler, create_test_project):
+    project_path = create_test_project({"test_file.py": "print('Hello World')"})
+
+    structure, contents = file_handler.generate_project_structure(project_path, ['test_file.py'])
+    assert './' in structure
+    assert 'test_file.py' not in structure
+
+def test_handle_different_file_encodings(file_handler, create_test_project):
+    project_path = create_test_project({
+        "utf8_file.txt": "utf-8 text",
+        "latin1_file.txt": "latin-1 text".encode("latin-1")
+    })
+
+    structure, contents = file_handler.generate_project_structure(project_path, [])
+    assert 'utf8_file.txt' in structure
+    assert 'latin1_file.txt' in structure
+    assert f"{project_path}/utf8_file.txt:\n```txt\nutf-8 text\n```\n" in contents
+    assert f"{project_path}/latin1_file.txt:\n```txt\nlatin-1 text\n```\n" in contents
+
+def test_should_ignore(file_handler):
+    assert file_handler._should_ignore('path/to/file.pyc', ['*.pyc'])
+    assert file_handler._should_ignore('path/to/dir/', ['dir/'])
+    assert not file_handler._should_ignore('path/to/file.py', ['*.pyc'])
+    assert not file_handler._should_ignore('path/to/another_dir/', ['dir/'])
+    assert file_handler._should_ignore('path/to/specific_file.py', ['specific_file.py'])
+    assert file_handler._should_ignore('path/to/specific_dir/', ['specific_dir/'])
+
+def test_empty_directory(file_handler, tmpdir):
+    common_test_empty_directory(file_handler.generate_project_structure, tmpdir, needs_ignore_list=True)
+
+def test_nested_directories(file_handler, create_test_project):
+    common_test_nested_directories(file_handler.generate_project_structure, create_test_project, needs_ignore_list=True)
+
+def test_mixed_content(file_handler, create_test_project):
+    common_test_mixed_content(file_handler.generate_project_structure, create_test_project, needs_ignore_list=True)
+
+```
+
+./tests/test_common.py:
+```py
+# ./tests/test_common.py
+import pytest
+
+@pytest.fixture
+def create_test_project(tmpdir):
+    def _create_project(structure):
+        base_dir = tmpdir.mkdir("test_project")
+        for path, content in structure.items():
+            file = base_dir.join(path)
+            file.dirpath().ensure(dir=True)  # Ensure all intermediate directories are created
+            file.write(content)
+        return str(base_dir)
+    return _create_project
+
+def common_test_empty_directory(export_func, tmpdir, needs_ignore_list=False):
+    test_dir = tmpdir.mkdir("empty_project")
+
+    if needs_ignore_list:
+        structure, contents = export_func(str(test_dir), [])
+    else:
+        structure, contents = export_func(str(test_dir))
+
+    assert './' in structure
+    assert len(structure.strip().split('\n')) == 1  # Only the root directory
+    assert contents == ''
+
+def common_test_nested_directories(export_func, create_test_project, needs_ignore_list=False):
+    project_path = create_test_project({
+        "dir1/dir2/dir3/test_file.py": "print('Hello Nested World')"
+    })
+
+    if needs_ignore_list:
+        structure, contents = export_func(project_path, [])
+    else:
+        structure, contents = export_func(project_path)
+
+    assert './' in structure
+    assert '├── dir1/' in structure
+    assert '│   ├── dir2/' in structure
+    assert '│   │   ├── dir3/' in structure
+    assert '│   │   │   ├── test_file.py' in structure
+    assert f"{project_path}/dir1/dir2/dir3/test_file.py:\n```py\nprint('Hello Nested World')\n```\n" in contents
+
+def common_test_mixed_content(export_func, create_test_project, needs_ignore_list=False):
+    project_path = create_test_project({
+        "test_file.py": "print('Hello World')",
+        "nested_dir/nested_file.py": "print('Nested File')"
+    })
+
+    if needs_ignore_list:
+        structure, contents = export_func(project_path, [])
+    else:
+        structure, contents = export_func(project_path)
+
+    assert './' in structure
+    assert '├── test_file.py' in structure
+    assert '├── nested_dir/' in structure
+    assert '│   ├── nested_file.py' in structure
+    assert f"{project_path}/test_file.py:\n```py\nprint('Hello World')\n```\n" in contents
+    assert f"{project_path}/nested_dir/nested_file.py:\n```py\nprint('Nested File')\n```\n" in contents
+
+```
+
+./tests/test_ignore_parser.py:
+```py
+import os
+import pytest
+from exporter.ignore_parser import IgnoreParser
+
+@pytest.fixture
+def ignore_parser():
+    return IgnoreParser()
+
+@pytest.fixture
+def create_gitignore(tmpdir):
+    def _create_ignore_file(file_name, rules):
+        test_dir = tmpdir.mkdir("test_project")
+        ignore_file = test_dir.join(file_name)
+        ignore_file.write("\n".join(rules))
+        return str(test_dir)
+    return _create_ignore_file
+
+def test_parse_standard_gitignore(ignore_parser, create_gitignore):
+    project_path = create_gitignore(".gitignore", ["*.pyc", "__pycache__/"])
+
+    ignore_list = ignore_parser.parse_gitignore(project_path)
+    assert "*.pyc" in ignore_list
+    assert "__pycache__/" in ignore_list
+
+def test_fallback_to_default_gitignore(ignore_parser, tmpdir):
+    test_dir = tmpdir.mkdir("test_project")
+
+    ignore_list = ignore_parser.parse_gitignore(str(test_dir))
+    assert ".vscode/" in ignore_list
+    assert "*.pyc" in ignore_list
+
+def test_handle_comments_and_empty_lines(ignore_parser, create_gitignore):
+    project_path = create_gitignore(".gitignore", ["# Comment line", "", "*.pyc", "", "__pycache__/"])
+
+    ignore_list = ignore_parser.parse_gitignore(project_path)
+    assert "*.pyc" in ignore_list
+    assert "__pycache__/" in ignore_list
+    assert "# Comment line" not in ignore_list
+    assert "" not in ignore_list
+
+def test_combined_ignore_rules(ignore_parser, tmpdir):
+    test_dir = tmpdir.mkdir("test_project")
+    gitignore_file = test_dir.join(".gitignore")
+    gitignore_file.write("*.pyc\n")
+    default_gitignore_file = os.path.join(os.path.dirname(__file__), '..', '.default_gitignore')
+
+    ignore_list = ignore_parser.parse_gitignore(str(test_dir))
+    assert "*.pyc" in ignore_list
+    with open(default_gitignore_file, 'r') as f:
+        for line in f:
+            rule = line.strip()
+            if rule and not rule.startswith('#'):
+                assert rule in ignore_list
+
+def test_missing_gitignore(ignore_parser, tmpdir):
+    test_dir = tmpdir.mkdir("test_project")
+    ignore_list = ignore_parser.parse_gitignore(str(test_dir))
+    assert ".vscode/" in ignore_list
+    assert "*.pyc" in ignore_list
+
+
+```
+
+./tests/conftest.py:
+```py
+import pytest
+
+@pytest.fixture
+def create_test_project(tmpdir):
+    def _create_project(structure):
+        base_dir = tmpdir.mkdir("test_project")
+        for path, content in structure.items():
+            file = base_dir.join(path)
+            file.dirpath().ensure(dir=True)  # Ensure all intermediate directories are created
+            file.write(content)
+        return str(base_dir)
+    return _create_project
+
+```
+
+./tests/__init__.py:
+```py
+
+```
+
+./tests/test_project_exporter.py:
+```py
+# ./tests/test_project_exporter.py
+import pytest
+from exporter.main import ProjectExporter
+from tests.test_common import create_test_project, common_test_empty_directory, common_test_nested_directories, common_test_mixed_content
+
+@pytest.fixture
+def project_exporter():
+    return ProjectExporter()
+
+def test_export_project_structure_and_contents(project_exporter, create_test_project):
+    project_path = create_test_project({"test_file.py": "print('Hello World')"})
+
+    structure, contents = project_exporter.export(project_path)
+    assert './' in structure
+    assert '├── test_file.py' in structure
+    assert f"{project_path}/test_file.py:\n```py\nprint('Hello World')\n```\n" in contents
+
+def test_integration_with_ignore_parser_and_file_handler(project_exporter, create_test_project):
+    project_path = create_test_project({
+        "test_file.py": "print('Hello World')",
+        ".gitignore": "*.pyc\n__pycache__/\n"
+    })
+
+    structure, contents = project_exporter.export(project_path)
+    assert './' in structure
+    assert '├── test_file.py' in structure
+    assert "*.pyc" not in structure
+    assert "__pycache__/" not in structure
+
+def test_empty_project(project_exporter, tmpdir):
+    common_test_empty_directory(project_exporter.export, tmpdir)
+
+def test_nested_directories(project_exporter, create_test_project):
+    common_test_nested_directories(project_exporter.export, create_test_project)
+
+def test_mixed_content(project_exporter, create_test_project):
+    common_test_mixed_content(project_exporter.export, create_test_project)
+
+```
+
+./tests/test_main.py:
+```py
+import subprocess
+import sys
+import os
+import pytest
+
+@pytest.fixture
+def create_test_project(tmpdir):
+    def _create_project(structure):
+        base_dir = tmpdir.mkdir("test_project")
+        for path, content in structure.items():
+            file = base_dir.join(path)
+            file.write(content)
+        return str(base_dir)
+    return _create_project
+
+def test_main_script_no_project_path(monkeypatch, tmpdir):
+    project_path = tmpdir.mkdir("test_project")
+    test_file = project_path.join("test_file.py")
+    test_file.write("print('Hello World')")
+
+    # Set sys.argv for the main.py script without project path argument
+    monkeypatch.setattr(sys, 'argv', ['main.py'])
+
+    # Copy the content of main.py to the temporary directory for testing
+    with open('main.py', 'r') as f:
+        main_script_content = f.read()
+
+    tmp_main_script = tmpdir.join("main.py")
+    tmp_main_script.write(main_script_content)
+
+    # Adjust the PYTHONPATH to include the root directory of the project
+    env = os.environ.copy()
+    env['PYTHONPATH'] = os.getcwd()
+
+    # Execute main.py in the temporary environment with the adjusted PYTHONPATH
+    result = subprocess.run([sys.executable, str(tmp_main_script)], cwd=str(tmpdir), env=env, text=True, capture_output=True)
+
+    # Debugging: Print stdout and stderr to understand what happened during the execution
+    print("STDOUT:", result.stdout)
+    print("STDERR:", result.stderr)
+
+    # Verify that the script failed with the correct error message
+    assert result.returncode != 0
+    assert "Error: No project path provided. Usage: main.py <project_path>" in result.stdout
+
+```
