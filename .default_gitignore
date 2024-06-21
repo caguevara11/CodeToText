@@ -1,5 +1,8 @@
 .default_gitignore
 
+# Git
+.git/
+
 # Python
 *.pyc
 __pycache__/
