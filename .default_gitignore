@@ -2,6 +2,7 @@
 
 # Git
 .git/
+.gitignore
 
 # Python
 *.pyc
@@ -239,3 +240,4 @@ __pycache__/
 
 # AI tools
 .aider*
+LICENSE

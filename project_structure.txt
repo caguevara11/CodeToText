@@ -1,12 +1,14 @@
 ./
 │   ├── requirements.txt
 │   ├── pytest.ini
+│   ├── README.md
 │   ├── main.py
 │   ├── exporter/
 │   │   ├── __init__.py
 │   │   ├── file_handler.py
 │   │   ├── ignore_parser.py
 │   │   ├── main.py
+│   │   ├── github_handler.py
 │   ├── tests/
 │   │   ├── test_file_handler.py
 │   │   ├── test_common.py
@@ -29,20 +31,59 @@ gitpython
 
 ```
 
+./README.md:
+```md
+# CodeToText - Project Exporter
+
+## Description
+
+CodeToText is a tool designed to export the structure and content of a programming project directory or a GitHub repository. It processes the directory tree or GitHub repository and generates a detailed report in a text file, excluding files and directories specified in a `.gitignore` file.
+
+## Requirements
+
+- Python 3.x
+- requests library (for GitHub support)
+
+## Installation
+
+1. Clone this repository:
+
+   ```bash
+   git clone https://github.com/caguevara11/CodeToText.git
+   cd CodeToText
+   ```
+
+2. Create and activate a virtual environment:
+
+   ```bash
+   python -m venv env
+   source env/bin/activate  # On
+```
+
 ./main.py:
 ```py
 import os
 import sys
 from exporter.main import ProjectExporter
+from exporter.github_handler import GitHubHandler
+
+def is_github_url(url: str) -> bool:
+    return url.startswith("https://github.com/") or url.startswith("git@github.com:")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Error: No project path provided. Usage: main.py <project_path>")
+        print("Error: No project path or GitHub URL provided. Usage: main.py <project_path_or_github_url>")
         sys.exit(1)
 
-    project_path = sys.argv[1]
+    project_path_or_url = sys.argv[1]
 
-    # Eliminar el archivo si ya existe
+    if is_github_url(project_path_or_url):
+        github_handler = GitHubHandler()
+        project_path = github_handler.clone_repo(project_path_or_url)
+    else:
+        project_path = project_path_or_url
+
+    # Remove the file if it already exists
     output_file_path = os.path.join(project_path, 'project_structure.txt')
     if os.path.exists(output_file_path):
         os.remove(output_file_path)
@@ -56,6 +97,11 @@ if __name__ == "__main__":
         file.write(project_contents)
 
     print("Project export completed.")
+
+    # Clean up temporary directory if it was a GitHub repository
+    if is_github_url(project_path_or_url):
+        import shutil
+        shutil.rmtree(project_path)
 
 ```
 
@@ -126,20 +172,21 @@ import os
 class IgnoreParser:
     def parse_gitignore(self, project_path: str) -> list:
         ignore_list = []
-        ignore_file = os.path.join(project_path, '.gitignore')
+        project_ignore_file = os.path.join(project_path, '.gitignore')
         default_ignore_file = os.path.join(os.path.dirname(__file__), '..', '.default_gitignore')
 
-        if not os.path.exists(ignore_file):
-            ignore_file = default_ignore_file
+        # Always read the default ignore file
+        ignore_list.extend(self._read_ignore_file(default_ignore_file))
 
-        with open(ignore_file, 'r') as file:
-            ignore_list = [line.strip() for line in file if line.strip() and not line.startswith('#')]
-
-        if ignore_file != default_ignore_file:
-            with open(default_ignore_file, 'r') as file:
-                ignore_list.extend([line.strip() for line in file if line.strip() and not line.startswith('#')])
+        # Read the project-specific .gitignore if it exists
+        if os.path.exists(project_ignore_file):
+            ignore_list.extend(self._read_ignore_file(project_ignore_file))
 
         return ignore_list
+
+    def _read_ignore_file(self, file_path: str) -> list:
+        with open(file_path, 'r') as file:
+            return [line.strip() for line in file if line.strip() and not line.startswith('#')]
 
 ```
 
@@ -158,6 +205,52 @@ class ProjectExporter:
         project_structure, project_contents = self.file_handler.generate_project_structure(project_path, ignore_list)
         return project_structure, project_contents
 
+
+```
+
+./exporter/github_handler.py:
+```py
+import os
+import tempfile
+import shutil
+import requests
+from git import Repo
+
+class GitHubHandler:
+    def clone_repo(self, github_url: str) -> str:
+        """
+        Clone a GitHub repository to a temporary directory.
+        
+        :param github_url: URL of the GitHub repository
+        :return: Path to the cloned repository
+        """
+        # Extract owner and repo name from the URL
+        parts = github_url.rstrip('/').split('/')
+        owner, repo = parts[-2], parts[-1]
+
+        # Create a temporary directory
+        temp_dir = tempfile.mkdtemp()
+
+        try:
+            # Clone the repository
+            Repo.clone_from(github_url, temp_dir)
+            
+            # Fetch the .gitignore file from GitHub API
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/.gitignore"
+            response = requests.get(api_url)
+            
+            if response.status_code == 200:
+                content = response.json()['content']
+                gitignore_content = requests.utils.unquote(content)
+                
+                # Write the .gitignore file
+                with open(os.path.join(temp_dir, '.gitignore'), 'w') as f:
+                    f.write(gitignore_content)
+            
+            return temp_dir
+        except Exception as e:
+            shutil.rmtree(temp_dir)
+            raise e
 
 ```
 
