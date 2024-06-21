@@ -28,11 +28,14 @@ if __name__ == "__main__":
 
     project_path_or_url = sys.argv[1]
 
-    if is_github_url(project_path_or_url):
+    is_remote = is_github_url(project_path_or_url)
+    if is_remote:
         github_handler = GitHubHandler()
         project_path = github_handler.clone_repo(project_path_or_url)
+        repo_name = project_path_or_url.split('/')[-1].replace('.git', '')
     else:
         project_path = project_path_or_url
+        repo_name = os.path.basename(project_path)
 
     # Use the current working directory for the output file
     output_file_path = os.path.join(os.getcwd(), 'project_structure.txt')
@@ -42,7 +45,7 @@ if __name__ == "__main__":
         os.remove(output_file_path)
 
     exporter = ProjectExporter()
-    project_structure, project_contents = exporter.export(project_path, output_file_path)
+    project_structure, project_contents = exporter.export(project_path, output_file_path, repo_name, is_remote)
 
     with open(output_file_path, 'w', encoding='utf-8') as file:
         file.write(project_structure)
@@ -52,6 +55,6 @@ if __name__ == "__main__":
     print(f"Project export completed. File saved at: {output_file_path}")
 
     # Clean up temporary directory if it was a GitHub repository
-    if is_github_url(project_path_or_url):
+    if is_remote:
         import shutil
         shutil.rmtree(project_path)
