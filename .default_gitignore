@@ -233,3 +233,6 @@ __pycache__/
 *.class
 *.jar
 *.war
+
+# AI tools
+.aider*
