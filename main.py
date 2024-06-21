@@ -34,20 +34,22 @@ if __name__ == "__main__":
     else:
         project_path = project_path_or_url
 
+    # Use the current working directory for the output file
+    output_file_path = os.path.join(os.getcwd(), 'project_structure.txt')
+
     # Remove the file if it already exists
-    output_file_path = os.path.join(project_path, 'project_structure.txt')
     if os.path.exists(output_file_path):
         os.remove(output_file_path)
 
     exporter = ProjectExporter()
-    project_structure, project_contents = exporter.export(project_path)
+    project_structure, project_contents = exporter.export(project_path, output_file_path)
 
     with open(output_file_path, 'w', encoding='utf-8') as file:
         file.write(project_structure)
         file.write('\n\n')
         file.write(project_contents)
 
-    print("Project export completed.")
+    print(f"Project export completed. File saved at: {output_file_path}")
 
     # Clean up temporary directory if it was a GitHub repository
     if is_github_url(project_path_or_url):
