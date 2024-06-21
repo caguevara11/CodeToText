@@ -14,7 +14,7 @@ class FileHandler:
             level = root.replace(project_path, '').count(os.sep)
             indent = '│   ' * level
             relative_path = os.path.relpath(root, project_path)
-            structure_path = f'{repo_name}/{relative_path}' if relative_path != '.' else repo_name
+            structure_path = relative_path if relative_path != '.' else repo_name
             structure.append(f'{indent}├── {structure_path}/')
 
             sub_indent = '│   ' * (level + 1)
@@ -24,7 +24,7 @@ class FileHandler:
                 structure.append(f'{sub_indent}├── {file}')
                 content = self.read_file(file_path)
                 extension = os.path.splitext(file)[1][1:]
-                contents.append(f'{repo_name}/{relative_file_path}:\n```{extension}\n{content}\n```\n')
+                contents.append(f'{relative_file_path}:\n```{extension}\n{content}\n```\n')
 
         return '\n'.join(structure), '\n'.join(contents)
 
