@@ -11,17 +11,8 @@ class ProjectExporter:
         ignore_list = self.ignore_parser.parse_gitignore(project_path)
         project_structure, project_contents = self.file_handler.generate_project_structure(project_path, ignore_list)
         
-        # Save project structure to a file
-        structure_file = os.path.join(project_path, 'project_structure.txt')
-        with open(structure_file, 'w') as f:
-            f.write(project_structure)
-        
-        # Save project contents to a file
-        contents_file = os.path.join(project_path, 'project_contents.txt')
-        with open(contents_file, 'w') as f:
-            f.write(project_contents)
-        
-        print(f"Project structure exported to: {structure_file}")
-        print(f"Project contents exported to: {contents_file}")
+        # Print the location where the output file will be saved
+        output_file_path = os.path.join(project_path, 'project_structure.txt')
+        print(f"Exporting project structure and contents to: {output_file_path}")
         
         return project_structure, project_contents
