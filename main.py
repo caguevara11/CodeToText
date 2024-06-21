@@ -1,15 +1,25 @@
 import os
 import sys
 from exporter.main import ProjectExporter
+from exporter.github_handler import GitHubHandler
+
+def is_github_url(url: str) -> bool:
+    return url.startswith("https://github.com/") or url.startswith("git@github.com:")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Error: No project path provided. Usage: main.py <project_path>")
+        print("Error: No project path or GitHub URL provided. Usage: main.py <project_path_or_github_url>")
         sys.exit(1)
 
-    project_path = sys.argv[1]
+    project_path_or_url = sys.argv[1]
 
-    # Eliminar el archivo si ya existe
+    if is_github_url(project_path_or_url):
+        github_handler = GitHubHandler()
+        project_path = github_handler.clone_repo(project_path_or_url)
+    else:
+        project_path = project_path_or_url
+
+    # Remove the file if it already exists
     output_file_path = os.path.join(project_path, 'project_structure.txt')
     if os.path.exists(output_file_path):
         os.remove(output_file_path)
@@ -23,3 +33,8 @@ if __name__ == "__main__":
         file.write(project_contents)
 
     print("Project export completed.")
+
+    # Clean up temporary directory if it was a GitHub repository
+    if is_github_url(project_path_or_url):
+        import shutil
+        shutil.rmtree(project_path)

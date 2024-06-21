@@ -33,4 +33,9 @@ class GitHubHandler:
                 
                 # Write the .gitignore file
                 with open(os.path.join(temp_dir, '.gitignore'), 'w') as f:
-                    f.write
+                    f.write(gitignore_content)
+            
+            return temp_dir
+        except Exception as e:
+            shutil.rmtree(temp_dir)
+            raise e
