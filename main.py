@@ -34,7 +34,7 @@ if __name__ == "__main__":
         project_path = github_handler.clone_repo(project_path_or_url)
         repo_name = project_path_or_url.split('/')[-1].replace('.git', '')
     else:
-        project_path = project_path_or_url
+        project_path = os.path.abspath(project_path_or_url)
         repo_name = os.path.basename(project_path)
 
     # Use the current working directory for the output file
